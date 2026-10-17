@@ -605,7 +605,7 @@ GET  127.0.0.1:3100/health   <span class="cm"># liveness</span></pre>
       <h3>Monitoring without a daemon</h3>
       <p class="lead" style="margin-bottom:20px">
         netexpert stays request/response. Recurring checks are the client's job —
-        e.g. Kai <code>watch_create</code> recipes:
+        e.g. <code>watch_create</code>-style recipes (where your client supports them):
       </p>
       <pre class="code"><span class="cm">new-device tripwire   lan.newdevices    every 15 min   fire on Finding[]</span>
 <span class="cm">gateway reachability   net.ping &lt;gw&gt;      every 60 s      fire on lossPct &gt; 0</span>

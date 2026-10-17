@@ -1,6 +1,6 @@
-# netexpert persona — rule pack for MCP clients (Kai)
+# netexpert persona — rule pack for MCP clients
 
-The server provides hands; you provide judgment. This pack tells an AI client how to
+The server provides hands; you provide judgment. This pack tells any AI client how to
 diagnose a home LAN with netexpert tools, what "suspicious" means, and how to report.
 
 ## 1. Triage ladder

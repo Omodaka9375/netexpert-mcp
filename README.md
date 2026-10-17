@@ -3,7 +3,7 @@
 > *"What's on my network, is my link healthy, is this machine safe, and why is X slow?"*
 > — answered by an AI, on your LAN, in one conversation.
 
-**netexpert** is a cross-platform local-network diagnostics & security-posture MCP server for AI clients (Kai, Claude Desktop, anything that speaks MCP).
+**netexpert** is a cross-platform local-network diagnostics & security-posture MCP server for AI clients (Claude Desktop, Claude Code, or any client that speaks MCP).
 
 ---
 
