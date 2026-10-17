@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [20, 22]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Smoke (stdio)
+        run: pnpm smoke
+
+      - name: Smoke (HTTP)
+        run: pnpm smoke:http
+
+      # The wiring contract: assert the registered tool set matches the
+      # documented 31 exactly (fail on any drift).
+      - name: Wiring contract
+        if: matrix.os == 'ubuntu-latest' && matrix.node == 22
+        run: pnpm exec vitest run tests/wiring.test.ts
+
+      # Pack sanity: the tarball must contain dist/ entrypoint + bin.
+      - name: Pack (dry run)
+        if: matrix.os == 'ubuntu-latest' && matrix.node == 22
+        run: npm pack --dry-run
+
+  publish:
+    needs: build-test
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # npm provenance
+      contents: write   # create the GitHub release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry: https://registry.npmjs.org
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Publish (prepublishOnly gate runs typecheck/test/build/smoke)
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
