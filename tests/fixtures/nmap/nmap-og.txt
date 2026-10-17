@@ -1,0 +1,4 @@
+# Nmap 7.95 scan initiated Sun Oct 19 00:30:01 2026 as: nmap -Pn -sT -T4 --max-retries 2 -oG - --top-ports 100 192.168.1.1
+Host: 192.168.1.1 (router.lan)	Status: Up
+Host: 192.168.1.1 (router.lan)	Ports: 21/closed/tcp//ftp///, 22/open/tcp//ssh//OpenSSH 9.6/, 23/closed/tcp//telnet///, 53/open/tcp//domain//dnsmasq 2.89/, 80/open/tcp//http//mini_httpd 1.0/, 443/filtered/tcp//https///, 1900/closed/tcp//upnp///	Ignored State: closed (93)
+# Nmap done at Sun Oct 19 00:30:12 2026 -- 1 IP address (1 host up) scanned in 11.05 seconds
