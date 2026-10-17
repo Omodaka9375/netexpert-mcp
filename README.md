@@ -93,14 +93,6 @@ pnpm build
 pnpm smoke        # build → stdio → tools/list → net.health
 ```
 
-**Daily commands**
-
-```bash
-pnpm typecheck    # verify (Kai runs this after every edit)
-pnpm test         # 46 tests: fixture-driven parsers, gates, safety — zero real network in units
-pnpm build        # emit dist/
-```
-
 **MCP client config**
 
 ```jsonc
@@ -151,8 +143,7 @@ The server provides hands; the persona provides judgment. The rule pack in `docs
 
 1. a **triage ladder** (link → ARP → IP/DNS → port → app — always state which layer exonerated/implicated),
 2. **baselines** for "suspicious" (new MAC with no vendor match, RFC1918 host on 445/3389 that isn't the NAS, resolver ≠ DoH, ARP flapping),
-3. the **Finding format** — every answer ends with the concrete next tool call, never a data dump,
-4. **composition rules with ugnas** for the NAS half.
+3. the **Finding format** — every answer ends with the concrete next tool call, never a data dump
 
 ## Project layout
 
@@ -167,14 +158,7 @@ src/
 scripts/       gen-oui.mjs · smoke.mjs · http-smoke.mjs
 docs/          persona.md
 tests/         fixtures/ + parsers · services · wifiSec · m4 · nmap (46 tests)
-```
+``
 
-## Supply-chain stance
-
-Runtime deps are 4 well-known packages (`@modelcontextprotocol/sdk`, `zod`, `systeminformation`, `default-gateway`) + the Node stdlib. Prior art was studied, not installed. Optional binaries (nmap, traceroute) are capability-detected, never required, and their absence produces an install hint — not a crash.
-
-## Status
-
-Spec-complete: M1–M5. Verified: `pnpm typecheck` clean, 46/46 tests, stdio + HTTP smoke on real hardware — where the very first `sec.exposure` run correctly flagged the dev machine's disabled firewall and exposed SMB port.
 
 License: MIT — see `LICENSE`. Published as [`netexpert-mcp` on npm](https://www.npmjs.com/package/netexpert-mcp).
