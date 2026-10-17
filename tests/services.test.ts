@@ -84,12 +84,35 @@ describe("lanSweep validation", () => {
   });
 });
 
+/**
+ * Platform-aware ARP fake: readArp uses `arp -a` (text) on win32/darwin
+ * but `ip -j neigh` (JSON) on linux — fake whichever this OS actually runs.
+ * Each entry: [ip, mac, dynamic?]
+ */
+function fakeArpOutput(entries: Array<[string, string, boolean?]>): string {
+  if (process.platform === "linux") {
+    return JSON.stringify(
+      entries.map(([ip, mac, dyn]) => ({
+        dst: ip,
+        lladdr: mac,
+        dev: "eth0",
+        state: [dyn ? "REACHABLE" : "PERMANENT"],
+      })),
+    );
+  }
+  return (
+    "Interface: 192.168.1.10 --- 0xc\n" +
+    entries.map(([ip, mac, dyn]) => `  ${ip}   ${mac.replaceAll(":", "-")}   ${dyn ? "dynamic" : "static"}`).join("\n") +
+    "\n"
+  );
+}
+
 describe("lanDevices (fake ARP)", () => {
   it("enriches ARP entries with vendor + skips non-RFC1918", async () => {
     const runner = new FakeRunner();
     runner.responses.push({
-      match: (argv) => argv[0] === "arp",
-      result: { stdout: "Interface: 192.168.1.10 --- 0xc\n  192.168.1.1   aa-bb-cc-11-22-33 dynamic\n  8.8.8.8       00-00-0c-aa-bb-cc dynamic\n" },
+      match: (argv) => argv[0] === "arp" || argv[0] === "ip",
+      result: { stdout: fakeArpOutput([["192.168.1.1", "aa:bb:cc:11:22:33", true], ["8.8.8.8", "00:00:0c:aa:bb:cc", true]]) },
     });
     const ctx = ctxWith({}, runner);
     const res = await lanDevices(ctx);
@@ -101,17 +124,17 @@ describe("lanDevices (fake ARP)", () => {
 });
 
 describe("snapshot + newdevices", () => {
-  function arpRunner(...lines: string[]): FakeRunner {
+  function arpRunner(...entries: Array<[string, string]>): FakeRunner {
     const r = new FakeRunner();
     r.responses.push({
-      match: (argv) => argv[0] === "arp",
-      result: { stdout: "Interface: 192.168.1.10 --- 0xc\n" + lines.join("\n") + "\n" },
+      match: (argv) => argv[0] === "arp" || argv[0] === "ip",
+      result: { stdout: fakeArpOutput(entries.map(([ip, mac]) => [ip, mac, true])) },
     });
     return r;
   }
 
   it("first newdevices run saves a baseline and reports info", async () => {
-    const runner = arpRunner("  192.168.1.1   00-00-0c-11-22-33 dynamic");
+    const runner = arpRunner(["192.168.1.1", "00:00:0c:11:22:33"]);
     const ctx = ctxWith({}, runner);
     const res = await lanNewdevices(ctx);
     const env = JSON.parse(JSON.stringify(res));
@@ -125,12 +148,12 @@ describe("snapshot + newdevices", () => {
 
   it("detects a new MAC and a MAC change for a known IP", async () => {
     // seed baseline
-    const seed = ctxWith({}, arpRunner("  192.168.1.1   00-00-0c-11-22-33 dynamic"));
+    const seed = ctxWith({}, arpRunner(["192.168.1.1", "00:00:0c:11:22:33"]));
     await lanSnapshot(seed, { mode: "save" });
     // now two devices: one known, one new; known IP changed MAC
     const runner2 = arpRunner(
-      "  192.168.1.1   de-ad-be-11-22-33 dynamic",   // MAC changed for known IP
-      "  192.168.1.99  00-00-0c-99-88-77 dynamic",   // new device (Cisco vendor known)
+      ["192.168.1.1", "de:ad:be:11:22:33"],   // MAC changed for known IP
+      ["192.168.1.99", "00:00:0c:99:88:77"],  // new device (Cisco vendor known)
     );
     const ctx2 = ctxWith({}, runner2);
     const res = await lanNewdevices(ctx2);

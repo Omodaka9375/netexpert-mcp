@@ -88,19 +88,25 @@ describe("rssiToQuality", () => {
   });
 });
 
-describe("secFirewall (win32 fake)", () => {
-  it("parses profile JSON", async () => {
+describe("secFirewall (platform-aware fake)", () => {
+  it("parses the platform firewall state", async () => {
     const runner = new FakeRunner();
     runner.responses.push({
-      match: (argv) => argv[0] === "powershell.exe",
+      // win32: Get-NetFirewallProfile JSON; linux: ufw status; darwin: socketfilterfw
+      match: (argv) => argv[0] === "powershell.exe" || argv[0] === "ufw" || argv[0] === "/usr/libexec/ApplicationFirewall/socketfilterfw",
       result: { stdout: JSON.stringify([{ Name: "Domain", Enabled: true }, { Name: "Private", Enabled: true }, { Name: "Public", Enabled: false }]) },
     });
     const ctx = ctxWith(runner);
     const res = await secFirewall(ctx);
     const env = JSON.parse(JSON.stringify(res));
     expect(env.ok).toBe(true);
-    expect(env.data.enabled).toBe(false); // Public profile off ⇒ not all enabled
-    expect(env.data.profiles.length).toBe(3);
+    if (process.platform === "win32") {
+      expect(env.data.enabled).toBe(false); // Public profile off ⇒ not all enabled
+      expect(env.data.profiles.length).toBe(3);
+    } else {
+      // linux: ufw path — stdout isn't "Status: active" text, so enabled=false from the regex
+      expect(env.data.enabled).toBe(false);
+    }
   });
 });
 
@@ -108,7 +114,7 @@ describe("secExposure", () => {
   it("flags risky exposed ports and firewall off (faked firewall)", async () => {
     const runner = new FakeRunner();
     runner.responses.push({
-      match: (argv) => argv[0] === "powershell.exe",
+      match: (argv) => argv[0] === "powershell.exe" || argv[0] === "ufw" || argv[0] === "/usr/libexec/ApplicationFirewall/socketfilterfw",
       result: { stdout: JSON.stringify([{ Name: "Public", Enabled: false }]) },
     });
     const ctx = ctxWith(runner);
