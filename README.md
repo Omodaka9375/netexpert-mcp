@@ -5,8 +5,6 @@
 
 **netexpert** is a cross-platform local-network diagnostics & security-posture MCP server for AI clients (Kai, Claude Desktop, anything that speaks MCP). It's the *local host + LAN* half of a home-lab toolkit — the NAS half already exists as the `ugnas` MCP server, and the two compose: netexpert never duplicates ugnas tools.
 
-31 tools · Windows / Linux / macOS · zero config on first run · read-only by default.
-
 ---
 
 ## Why it exists
@@ -177,6 +175,6 @@ Runtime deps are 4 well-known packages (`@modelcontextprotocol/sdk`, `zod`, `sys
 
 ## Status
 
-Spec-complete: M1–M5 (§ SPEC.md). Verified: `pnpm typecheck` clean, 46/46 tests, stdio + HTTP smoke on real hardware — where the very first `sec.exposure` run correctly flagged the dev machine's disabled firewall and exposed SMB port.
+Spec-complete: M1–M5. Verified: `pnpm typecheck` clean, 46/46 tests, stdio + HTTP smoke on real hardware — where the very first `sec.exposure` run correctly flagged the dev machine's disabled firewall and exposed SMB port.
 
-License: MIT (or pick one before publishing).
+License: MIT — see `LICENSE`. Published as [`netexpert-mcp` on npm](https://www.npmjs.com/package/netexpert-mcp).
