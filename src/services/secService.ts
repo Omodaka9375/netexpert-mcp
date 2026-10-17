@@ -202,7 +202,6 @@ export async function secExposure(ctx: ServiceContext): Promise<Envelope<object>
   }, { backend: "computed (systeminformation + firewall state)", durationMs: Date.now() - start });
 }
 
-export const secToolSchemas = {};
 
 // ---------------------------------------------------------------------------
 // M4: sec.speedtest — bounded ranged download (Cloudflare default, configurable)

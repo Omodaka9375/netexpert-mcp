@@ -1,6 +1,3 @@
-import type { CommandMap } from "../exec/platform.js";
-import { win32, linux, darwin, commandMapFor } from "../exec/platform.js";
-
 /** Parse `arp -a` BSD-style output (win32 + darwin). */
 export interface Neighbor {
   ip: string;
@@ -188,7 +185,3 @@ export function parseTraceroute(out: string): { hops: Hop[]; warnings: string[] 
   if (hops.length === 0) warnings.push("no parseable hops");
   return { hops, warnings };
 }
-
-// Silence unused import lints in consumers expecting only parser exports.
-export const _commandMaps = { win32, linux, darwin, commandMapFor } as const;
-export type _CommandMap = CommandMap;

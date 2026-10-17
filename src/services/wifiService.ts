@@ -145,20 +145,15 @@ export async function wifiStatus(ctx: ServiceContext): Promise<Envelope<object>>
       return okEnvelope(ctx, "wifi.status", { link }, { backend: "cmd:netsh wlan show interfaces", durationMs: Date.now() - start });
     }
     if (platform === "linux") {
-      // try iw via a default wlan interface discovered from systeminformation
-      const ifaces = await si.wifiNetworks().catch(() => [] as si.Systeminformation.WifiNetworkData[]);
       const iface = process.env["NETEXPERT_WIFI_IF"] ?? "wlan0";
-      void ifaces;
       const res = await ctx.runner.run("iw", ["dev", iface, "link"], { timeoutMs: 10000 });
       const link = parseIwLink(res.stdout);
       if (!link) {
         return failEnvelope(ctx, "wifi.status", { code: "EXEC_FAILED", message: `iw dev ${iface} link returned nothing parseable`, hint: "iw not present or no WiFi — try nmcli or check the interface name (NETEXPERT_WIFI_IF)" });
       }
-      return okEnvelope(ctx, "wifi.status", { link, scannedNetworksCount: ifaces.length }, { backend: `cmd:iw dev ${iface} link`, durationMs: Date.now() - start });
+      return okEnvelope(ctx, "wifi.status", { link }, { backend: `cmd:iw dev ${iface} link`, durationMs: Date.now() - start });
     }
     // darwin: systeminformation (airport deprecated per SPEC)
-    const networks = await si.wifiNetworks();
-    void networks;
     const link = await si.wifiConnections().then((conns) => conns[0] ?? null).catch(() => null);
     if (!link) {
       return failEnvelope(ctx, "wifi.status", { code: "EXEC_FAILED", message: "no WiFi connection found via systeminformation", hint: "try running while connected to WiFi, or check System Settings" });
@@ -211,18 +206,16 @@ export async function wifiHealth(ctx: ServiceContext): Promise<Envelope<object>>
   // Channel-overlap + band-mismatch analysis needs the survey
   const surveyEnv = await wifiNetworks(ctx);
   let aps: WifiAp[] = [];
-  let mySsid: string | undefined;
+  const mySsid = link.ssid;
   let myChannel: number | undefined;
   let coChannelAps = 0;
   let fiveGhzAvailable = false;
   if (surveyEnv.ok && surveyEnv.data) {
     aps = (surveyEnv.data as { aps: WifiAp[] }).aps;
-    mySsid = link.ssid;
     myChannel = link.channel;
     for (const ap of aps) {
       if (ap.band === "5" || ap.band === "6") fiveGhzAvailable = true;
       if (myChannel !== undefined && ap.channel === myChannel && (mySsid === undefined || ap.ssid !== mySsid)) coChannelAps++;
-      void mySsid;
     }
   }
   if (link.band === "2.4" && coChannelAps > 0) {
@@ -254,5 +247,3 @@ export async function wifiHealth(ctx: ServiceContext): Promise<Envelope<object>>
   }
   return okEnvelope(ctx, "wifi.health", { link, surveyedAps: aps.length, findings }, { backend: "computed (netsh/iw + systeminformation)", durationMs: Date.now() - start });
 }
-
-export const wifiToolSchemas = {};

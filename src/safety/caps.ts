@@ -37,11 +37,3 @@ export function isRfc1918(ip: string): boolean {
   return false;
 }
 
-export function cidrHostCount(cidrPrefix: number): number {
-  return 2 ** (32 - cidrPrefix);
-}
-
-/** Hard bounds check for sweep subnets. */
-export function sweepWithinBounds(cidrPrefix: number, maxHosts: number): boolean {
-  return cidrHostCount(cidrPrefix) <= maxHosts * 4;
-}

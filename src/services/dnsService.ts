@@ -2,7 +2,6 @@ import dns from "node:dns";
 import { z } from "zod";
 import type { ServiceContext, Envelope } from "./util.js";
 import { okEnvelope, failEnvelope } from "./util.js";
-import { commandMapFor, backendTag } from "../exec/platform.js";
 
 const nameSchema = z.string().min(1).max(253).regex(/^[a-zA-Z0-9._-]+$/, "invalid name");
 const ipSchema = z.string().ip();
@@ -73,7 +72,6 @@ export async function dnsReverse(ctx: ServiceContext, input: z.infer<typeof Reve
 export async function dnsResolvers(ctx: ServiceContext): Promise<Envelope<object>> {
   const start = Date.now();
   const platform = process.platform;
-  const map = commandMapFor(platform);
   try {
     if (platform === "win32") {
       const res = await ctx.runner.run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Get-DnsClientServerAddress | ConvertTo-Json -Compress"], { timeoutMs: 10000 });
