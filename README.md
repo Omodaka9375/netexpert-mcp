@@ -128,7 +128,7 @@ The OUI vendor database (`src/data/oui.json`, 40k IEEE MA-L entries) is committe
 
 ## Monitoring without a daemon
 
-netexpert stays request/response; recurring checks are your MCP client's job. Kai `watch_create` recipes:
+netexpert stays request/response; recurring checks are your MCP client's job:
 
 ```text
 New-device tripwire   lan.newdevices    every 15 min   fire on Finding[] beyond the info baseline
