@@ -3,7 +3,7 @@
 > *"What's on my network, is my link healthy, is this machine safe, and why is X slow?"*
 > — answered by an AI, on your LAN, in one conversation.
 
-**netexpert** is a cross-platform local-network diagnostics & security-posture MCP server for AI clients (Kai, Claude Desktop, anything that speaks MCP). It's the *local host + LAN* half of a home-lab toolkit — the NAS half already exists as the `ugnas` MCP server, and the two compose: netexpert never duplicates ugnas tools.
+**netexpert** is a cross-platform local-network diagnostics & security-posture MCP server for AI clients (Kai, Claude Desktop, anything that speaks MCP).
 
 ---
 
