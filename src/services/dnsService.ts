@@ -198,7 +198,11 @@ export async function dnsHijackcheck(ctx: ServiceContext): Promise<Envelope<obje
   const start = Date.now();
   const findings: Finding[] = [];
   const table: Array<{ domain: string; system: string[]; doh: string[]; match: boolean }> = [];
-  for (const domain of HIJACK_DOMAINS) {
+  // One domain = one bounded (4s) system lookup + one (8s-capped) DoH query.
+  // Run the probe domains in parallel so the tool finishes in ~one probe
+  // duration instead of three sequential ones (keeps it well under test/tool
+  // timeouts on slow or stalling resolvers).
+  await Promise.all(HIJACK_DOMAINS.map(async (domain) => {
     let sys: string[] = [];
     let sysErr: string | undefined;
     try {
@@ -217,7 +221,9 @@ export async function dnsHijackcheck(ctx: ServiceContext): Promise<Envelope<obje
     } else if (!match && dohAns.length > 0 && sys.length > 0) {
       findings.push({ severity: "high", title: `DNS answer mismatch for ${domain}`, evidence: `system: ${sys.join(", ")} vs trusted DoH: ${dohAns.join(", ")}`, nextStep: "run dns.resolvers to see which server the OS uses; compare with dns.propagation for corroboration" });
     }
-  }
+  }));
+  // restore probe-domain order regardless of completion order
+  table.sort((a, b) => HIJACK_DOMAINS.indexOf(a.domain) - HIJACK_DOMAINS.indexOf(b.domain));
   if (findings.length === 0) {
     findings.push({ severity: "info", title: "No DNS hijack indicators", evidence: table.map((r) => `${r.domain}: system=DoH`).join("; "), nextStep: "none — system resolver agrees with trusted DoH on all probe domains" });
   }

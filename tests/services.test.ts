@@ -173,7 +173,7 @@ describe("dns tools (network-dependent, tolerant)", () => {
     expect(env.ok).toBe(true);
     expect(env.data.sources.length).toBeGreaterThanOrEqual(3);
     expect(typeof env.data.consistent).toBe("boolean");
-  }, 30000);
+  }, 60000);
 
   it("dns.hijackcheck returns findings", async () => {
     const ctx = ctxWith();
@@ -181,7 +181,7 @@ describe("dns tools (network-dependent, tolerant)", () => {
     const env = JSON.parse(JSON.stringify(res));
     expect(env.ok).toBe(true);
     expect(env.data.findings.length).toBeGreaterThanOrEqual(1);
-  }, 30000);
+  }, 60000);
 
   it("net.publicip returns an IP", async () => {
     const ctx = ctxWith();
