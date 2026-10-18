@@ -40,29 +40,73 @@ export async function secConnections(ctx: ServiceContext): Promise<Envelope<obje
 
 const LISTEN_RE = /^(0\.0\.0\.0|\*|::|\[::\])/;
 
+/**
+ * pid → process name. systeminformation leaves `process` empty on Windows;
+ * resolve it ourselves from a single `tasklist` sweep (win32) or Get-Process.
+ */
+async function pidNames(ctx: ServiceContext, pids: number[]): Promise<Map<number, string>> {
+  const map = new Map<number, string>();
+  const unique = [...new Set(pids)].filter((p) => p > 0);
+  if (unique.length === 0) return map;
+  try {
+    if (process.platform === "win32") {
+      // one CSV sweep; columns: "name","pid",...
+      const res = await ctx.runner.run("tasklist", ["/fo", "csv", "/nh"], { timeoutMs: 15000 });
+      for (const line of res.stdout.split(/\r?\n/)) {
+        if (!line.trim()) continue;
+        const cells = line.match(/"([^"]*)"/g) ?? [];
+        const name = (cells[0] ?? "").replaceAll('"', "");
+        const pid = Number.parseInt((cells[1] ?? "").replaceAll('"', ""), 10);
+        if (name && Number.isFinite(pid)) map.set(pid, name);
+      }
+    } else {
+      const res = await ctx.runner.run("ps", ["-o", "pid=,comm="], { timeoutMs: 15000 });
+      for (const line of res.stdout.split(/\r?\n/)) {
+        const m = line.trim().match(/^(\d+)\s+(.+)$/);
+        if (m?.[1] && m[2]) map.set(Number.parseInt(m[1], 10), m[2].trim());
+      }
+    }
+  } catch { /* best-effort: leave names unresolved */ }
+  return map;
+}
+
 export async function secListening(ctx: ServiceContext): Promise<Envelope<object>> {
   const start = Date.now();
   try {
     const conns = await si.networkConnections();
+    // Resolve process names for every listener pid in one sweep.
+    const rawPid = (c: (typeof conns)[number]) => c.pid && c.pid !== 0 ? c.pid : undefined;
+    const names = await pidNames(ctx, conns.map(rawPid).filter((p): p is number => p !== undefined));
+    const seen = new Set<string>();
     const listeners = conns
       .filter((c) => c.state === "LISTEN" || (c.state === "" && c.protocol === "udp"))
       .map((c) => {
         const exposed = LISTEN_RE.test(c.localAddress ?? "*");
         const port = Number.parseInt(c.localPort || "0", 10);
+        const pid = rawPid(c);
         return {
           proto: c.protocol as "tcp" | "udp",
           port,
           localAddress: c.localAddress ?? "*",
           exposed, // true = non-loopback (0.0.0.0/::/*)
-          pid: c.pid && c.pid !== 0 ? c.pid : undefined,
-          process: c.process || undefined,
+          pid,
+          process: c.process || (pid !== undefined ? names.get(pid) : undefined),
           risk: undefined as string | undefined,
         };
       })
-      .filter((l) => l.port > 0);
+      .filter((l) => l.port > 0)
+      // dedupe: systeminformation can emit the same listener twice (dual
+      // IPv4/IPv6 rows, or repeated socket rows) — one entry per proto+port
+      // keeps the risky-port findings honest
+      .filter((l) => {
+        const key = `${l.proto}:${l.port}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     const exposedCount = listeners.filter((l) => l.exposed).length;
     return okEnvelope(ctx, "sec.listening", { listeners, exposedCount }, {
-      backend: "systeminformation.networkConnections",
+      backend: "systeminformation.networkConnections" + (names.size > 0 ? " + tasklist" : ""),
       durationMs: Date.now() - start,
       warnings: exposedCount > 0 ? [`${exposedCount} listeners bound on all interfaces (0.0.0.0/::)`] : undefined,
     });
