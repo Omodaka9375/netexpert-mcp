@@ -3,7 +3,60 @@
 > *"What's on my network, is my link healthy, is this machine safe, and why is X slow?"*
 > — answered by an AI, on your LAN, in one conversation.
 
-**netexpert** is a cross-platform local-network diagnostics & security-posture MCP server for AI clients (Claude Desktop, Claude Code, or any client that speaks MCP).
+**netexpert** is a cross-platform local-network diagnostics & security-posture MCP server for AI clients (Claude Desktop, Claude Code, or any client that speaks MCP). Windows, Linux, macOS — one normalized JSON envelope, 31 tools, zero config on first run, read-only by default.
+
+It's the *local host + LAN* half of a home-lab toolkit — the NAS half already exists as [`ugnas-mcp`](https://github.com/Omodaka9375/ugnas-mcp), and the two compose.
+
+Also listed in the [MCP registry](https://registry.modelcontextprotocol.io) as `io.github.Omodaka9375/netexpert-mcp`.
+
+---
+
+## Install
+
+The package is on npm — no clone, no build:
+
+```bash
+# run once, on demand (no install)
+npx -y netexpert-mcp
+
+# or install globally
+npm install -g netexpert-mcp
+netexpert-mcp
+```
+
+**Wire it into your MCP client** (stdio):
+
+```jsonc
+{
+  "mcpServers": {
+    "netexpert": {
+      "command": "npx",
+      "args": ["-y", "netexpert-mcp"]
+    }
+  }
+}
+```
+
+That's it — first run needs no config file, no environment variables, nothing. Ask your client *"what devices are on my network?"* and it has the tools to answer.
+
+**Optional HTTP transport** (stateless, same JSON-RPC surface):
+
+```bash
+NETEXPERT_HTTP_PORT=3100 netexpert-mcp
+# POST http://127.0.0.1:3100/mcp     (tools/list, tools/call)
+# GET  http://127.0.0.1:3100/health  (liveness)
+```
+
+---
+
+## Try it in 30 seconds
+
+Once wired into your client, try:
+
+1. **"Am I exposed?"** → the client calls `sec.exposure` — listening ports × firewall state × a risky-port knowledge base, reported as `Finding`s.
+2. **"What's on my network?"** → `lan.devices` — ARP inventory enriched with IEEE-OUI vendor names and PTR hostnames.
+3. **"Is my DNS lying to me?"** → `dns.hijackcheck` — known-good domains via your system resolver vs trusted DoH; mismatch ⇒ `Finding{severity:high}`.
+4. **"Is my WiFi any good?"** → `wifi.health` — RSSI quality bands, channel overlap, band mismatch — interpreted, with next steps.
 
 ---
 
@@ -84,30 +137,7 @@ Existing network MCP servers are either deprecated Python packages, wrappers tha
 
 ---
 
-## Getting started
-
-```bash
-git clone <repo> && cd netexpert-mcp
-pnpm install
-pnpm build
-pnpm smoke        # build → stdio → tools/list → net.health
-```
-
-**MCP client config**
-
-```jsonc
-{ "mcpServers": { "netexpert": { "command": "node", "args": ["<abs-path>/dist/server.js"] } } }
-```
-
-Optional stateless HTTP transport:
-
-```bash
-NETEXPERT_HTTP_PORT=3100 node dist/server.js
-# POST http://127.0.0.1:3100/mcp   (JSON-RPC: tools/list, tools/call)
-# GET  http://127.0.0.1:3100/health
-```
-
-## Configuration
+## Configuration (all optional)
 
 `~/.netexpert-mcp/config.json` — sane defaults, so **zero-config first run**:
 
@@ -116,15 +146,22 @@ NETEXPERT_HTTP_PORT=3100 node dist/server.js
   "defaults":  { "pingCount": 4, "traceMaxHops": 20 },
   "resolvers": { "trusted": ["1.1.1.1", "8.8.8.8"],
                  "dohUrl": "https://cloudflare-dns.com/dns-query" },
-  "caps":      { "portscan": { "maxPorts": 256 }, "sweep": { "maxHosts": 1024 }, "http": {}, "speedtest": {} },
+  "caps":      { "portscan": { "maxPorts": 256 }, "sweep": { "maxHosts": 1024 } },
   "rate":      { "sweep": 30, "portscan": 10, "speedtest": 60, "httpCheck": 2 },
   "nmap":      { "enabled": false }   // deep scans are opt-in by design
 }
 ```
 
-Invariants: caps are **ceilings** — tool inputs may go lower, never higher. Env overrides via `NETEXPERT_*` (`NETEXPERT_HTTP_PORT`, `NETEXPERT_MCP_CONFIG`). **No credentials ever** — any config key containing `password`/`token`/`secret`/`credential` is rejected at load.
+Invariants:
 
-The OUI vendor database (`src/data/oui.json`, 40k IEEE MA-L entries) is committed — never fetched at runtime. Regenerate with `node scripts/gen-oui.mjs`.
+- caps are **ceilings** — tool inputs may go lower, never higher
+- env overrides via `NETEXPERT_*`: `NETEXPERT_MCP_CONFIG` (config path), `NETEXPERT_HTTP_PORT`, `NETEXPERT_WIFI_IF` (linux wlan iface)
+- **no credentials ever** — any config key containing `password`/`token`/`secret`/`credential` is rejected at load
+
+**Optional extras:**
+
+- **nmap deep scans** — install nmap (`winget install Insecure.Nmap` / `sudo apt install nmap`), then set `"nmap": { "enabled": true }` in config. Absence just produces an install hint, never a crash.
+- **OUI vendor db** — ships inside the package; never fetched at runtime.
 
 ## Monitoring without a daemon
 
@@ -143,9 +180,26 @@ The server provides hands; the persona provides judgment. The rule pack in `docs
 
 1. a **triage ladder** (link → ARP → IP/DNS → port → app — always state which layer exonerated/implicated),
 2. **baselines** for "suspicious" (new MAC with no vendor match, RFC1918 host on 445/3389 that isn't the NAS, resolver ≠ DoH, ARP flapping),
-3. the **Finding format** — every answer ends with the concrete next tool call, never a data dump
+3. the **Finding format** — every answer ends with the concrete next tool call, never a data dump.
 
-## Project layout
+---
+
+## Development
+
+```bash
+git clone https://github.com/Omodaka9375/netexpert-mcp.git
+cd netexpert-mcp
+pnpm install
+
+pnpm typecheck     # strict TS (Kai/Claude Code runs this after edits)
+pnpm test          # 50 fixture-driven tests (fake runner, zero real network in units)
+pnpm build         # → dist/
+pnpm smoke         # build → stdio → tools/list → net.health
+pnpm smoke:http     # HTTP transport check
+node scripts/gen-oui.mjs   # regenerate the OUI db (rarely needed)
+```
+
+Project layout:
 
 ```text
 src/
@@ -156,9 +210,16 @@ src/
   data/        oui.json (40k IEEE OUI entries, committed)
   mcp/         toolset.ts (31 tools, zod inputs) · createServer.ts
 scripts/       gen-oui.mjs · smoke.mjs · http-smoke.mjs
-docs/          persona.md
-tests/         fixtures/ + parsers · services · wifiSec · m4 · nmap (46 tests)
-``
+docs/          persona.md · index.html (the docs page)
+tests/         fixtures/ + 50 tests across 6 files
+```
 
+CI (GitHub Actions): 4-way matrix (ubuntu/windows × node 20/22) runs the full chain on every push and PR — including a wiring contract test that fails if the registered tool set ever drifts from this README.
 
-License: MIT — see `LICENSE`. Published as [`netexpert-mcp` on npm](https://www.npmjs.com/package/netexpert-mcp).
+## Status
+
+Spec-complete: M1–M5. Verified live on Windows against a real home LAN — where the very first `sec.exposure` run correctly flagged the dev machine's disabled firewall and exposed SMB port.
+
+**License:** MIT — see [`LICENSE`](LICENSE).
+**npm:** [`netexpert-mcp`](https://www.npmjs.com/package/netexpert-mcp) · **MCP registry:** `io.github.Omodaka9375/netexpert-mcp`
+**Source & issues:** [GitHub](https://github.com/Omodaka9375/netexpert-mcp)
