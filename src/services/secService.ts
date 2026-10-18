@@ -119,6 +119,14 @@ export async function secListening(ctx: ServiceContext): Promise<Envelope<object
 // sec.firewall (L3, per-platform)
 // ---------------------------------------------------------------------------
 
+/**
+ * PowerShell (5.1 and some 7 builds) serializes the Enabled boolean as
+ * 1/0 in compressed JSON instead of true/false. Accept both.
+ */
+function isEnabled(v: unknown): boolean {
+  return v === true || v === 1 || v === "true" || v === "1" || v === "Enabled";
+}
+
 export interface FirewallProfile {
   platform: NodeJS.Platform;
   enabled: boolean | null;
@@ -143,7 +151,7 @@ export async function secFirewall(ctx: ServiceContext): Promise<Envelope<object>
       } catch { /* fall through to null */ }
       const norm = profiles
         .filter((p) => typeof p.Name === "string")
-        .map((p) => ({ name: String(p.Name), enabled: p.Enabled === true }));
+        .map((p) => ({ name: String(p.Name), enabled: isEnabled(p.Enabled) }));
       return okEnvelope(ctx, "sec.firewall", {
         platform, enabled: norm.length > 0 && norm.every((p) => p.enabled),
         profiles: norm,
