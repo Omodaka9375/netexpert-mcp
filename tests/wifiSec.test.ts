@@ -113,18 +113,32 @@ describe("secFirewall (platform-aware fake)", () => {
   // 1/0 (integer) in compressed JSON, not true/false. A strict === true
   // comparison read every profile as disabled and produced a false
   // "firewall is OFF" high finding on machines where it was on.
-  it("accepts Enabled as 1/0 integers (win32 serialization quirk)", async () => {
+  it("reports the firewall as enabled (platform-aware fake)", async () => {
     const runner = new FakeRunner();
     runner.responses.push({
+      // win32: the quirk under test — Enabled as 1/0 integers
       match: (argv) => argv[0] === "powershell.exe",
       result: { stdout: JSON.stringify([{ Name: "Domain", Enabled: 1 }, { Name: "Private", Enabled: 1 }, { Name: "Public", Enabled: 1 }]) },
+    });
+    runner.responses.push({
+      // linux: ufw active text
+      match: (argv) => argv[0] === "ufw",
+      result: { stdout: "Status: active" },
+    });
+    runner.responses.push({
+      // darwin: socketfilterfw enabled
+      match: (argv) => argv[0] === "/usr/libexec/ApplicationFirewall/socketfilterfw",
+      result: { stdout: "Firewall is enabled" },
     });
     const ctx = ctxWith(runner);
     const res = await secFirewall(ctx);
     const env = JSON.parse(JSON.stringify(res));
     expect(env.ok).toBe(true);
     expect(env.data.enabled).toBe(true);
-    expect(env.data.profiles.every((p: { enabled: boolean }) => p.enabled)).toBe(true);
+    if (process.platform === "win32") {
+      // the profiles array only exists on the win32 path
+      expect(env.data.profiles.every((p: { enabled: boolean }) => p.enabled)).toBe(true);
+    }
   });
 });
 
