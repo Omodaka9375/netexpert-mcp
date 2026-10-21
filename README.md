@@ -214,12 +214,6 @@ docs/          persona.md · index.html (the docs page)
 tests/         fixtures/ + 50 tests across 6 files
 ```
 
-CI (GitHub Actions): 4-way matrix (ubuntu/windows × node 20/22) runs the full chain on every push and PR — including a wiring contract test that fails if the registered tool set ever drifts from this README.
-
-## Status
-
-Spec-complete: M1–M5. Verified live on Windows against a real home LAN — where the very first `sec.exposure` run correctly flagged the dev machine's disabled firewall and exposed SMB port.
-
 **License:** MIT — see [`LICENSE`](LICENSE).
 **npm:** [`netexpert-mcp`](https://www.npmjs.com/package/netexpert-mcp) · **MCP registry:** `io.github.Omodaka9375/netexpert-mcp`
 **Source & issues:** [GitHub](https://github.com/Omodaka9375/netexpert-mcp)
