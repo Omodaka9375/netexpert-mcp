@@ -2,6 +2,7 @@ import http from "node:http";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createServer } from "./mcp/createServer.js";
 import { loadConfig } from "./config.js";
+import { VERSION } from "./services/coreService.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -12,7 +13,7 @@ async function main(): Promise<void> {
       const url = req.url ?? "/";
       if (url === "/health") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ ok: true, server: "netexpert-mcp", version: "0.1.0" }));
+        res.end(JSON.stringify({ ok: true, server: "netexpert-mcp", version: VERSION }));
         return;
       }
       if (url === "/mcp" && req.method === "POST") {
@@ -33,7 +34,7 @@ async function main(): Promise<void> {
         const msg = message as { id?: number | string; method?: string; jsonrpc?: string };
         if (msg.method === "initialize") {
           res.writeHead(200, { "content-type": "application/json" });
-          res.end(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "netexpert-mcp", version: "0.1.0" } } }));
+          res.end(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "netexpert-mcp", version: VERSION } } }));
           return;
         }
         if (msg.method === "tools/list") {

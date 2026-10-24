@@ -14,7 +14,7 @@ async function reverseBounded(ip: string, timeoutMs = 2000): Promise<string | un
   }
 }
 import si from "systeminformation";
-import defaultGateway from "default-gateway";
+import { gateway4async } from "default-gateway";
 import { z } from "zod";
 import type { ServiceContext, Envelope } from "./util.js";
 import { okEnvelope, failEnvelope } from "./util.js";
@@ -49,10 +49,30 @@ export async function lanInterfaces(ctx: ServiceContext): Promise<Envelope<objec
   return okEnvelope(ctx, "lan.interfaces", { interfaces: nics }, { backend: "systeminformation", durationMs: Date.now() - start });
 }
 
+/** Normalized gateway result. default-gateway@7 returns `int` for the interface
+ *  name (its @types calls it `interface`); normalize both, and fall back to
+ *  systeminformation's `default: true` flag when the gateway reports none. */
+interface Gateway4Result {
+  gateway: string;
+  interface?: string;
+}
+
+async function gateway4(): Promise<Gateway4Result> {
+  const raw = (await gateway4async()) as { gateway: string; interface?: string; int?: string };
+  let iface = raw.interface ?? raw.int;
+  if (!iface) {
+    // fall back to the interface systeminformation marks as the default route
+    const ifaces = await si.networkInterfaces();
+    const def = ifaces.find((n) => n.default && n.ip4);
+    iface = def?.iface;
+  }
+  return { gateway: raw.gateway, interface: iface };
+}
+
 export async function lanGateway(ctx: ServiceContext): Promise<Envelope<object>> {
   const start = Date.now();
   try {
-    const gw = await (defaultGateway as unknown as { v4: () => Promise<{ gateway: string; interface?: string }> }).v4();
+    const gw = await gateway4();
     let subnet: string | undefined;
     try {
       const raw = await si.networkInterfaces();
@@ -141,7 +161,7 @@ export async function lanSweep(ctx: ServiceContext, input: z.infer<typeof Subnet
     // Resolve target subnet: explicit, or local /24 derived from default iface
     let cidr = input.subnet;
     if (!cidr) {
-      const gws = await (defaultGateway as unknown as { v4: () => Promise<{ gateway: string; interface?: string }> }).v4();
+      const gws = await gateway4();
       const ifaces = await si.networkInterfaces();
       const me = ifaces.find((n) => n.iface === gws.interface && n.ip4);
       if (!me?.ip4) {
@@ -187,7 +207,7 @@ export async function lanDevices(ctx: ServiceContext): Promise<Envelope<object>>
       live.map(async (n) => {
         const vendor = n.mac !== undefined ? vendorForMac(n.mac) : undefined;
         const hostname = await reverseBounded(n.ip);
-        return { ...n, vendor, hostname, firstSeen: undefined, lastSeen: new Date().toISOString() };
+        return { ...n, vendor, hostname, lastSeen: new Date().toISOString() };
       }),
     );
     devices.sort((a, b) => a.ip.localeCompare(b.ip, undefined, { numeric: true }));

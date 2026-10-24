@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ZodRawShape } from "zod";
 import { z } from "zod";
 import { buildToolset, defaultContext } from "./toolset.js";
+import { VERSION } from "../services/coreService.js";
 
 /** Convert a zod object schema into the raw shape MCP tool() expects. */
 function toRawShape(schema: unknown): ZodRawShape {
@@ -12,7 +13,7 @@ function toRawShape(schema: unknown): ZodRawShape {
 }
 
 export function createServer(): McpServer {
-  const server = new McpServer({ name: "netexpert-mcp", version: "0.1.0" });
+  const server = new McpServer({ name: "netexpert-mcp", version: VERSION });
   const ctx = defaultContext();
   for (const t of buildToolset()) {
     server.tool(

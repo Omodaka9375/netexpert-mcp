@@ -1,14 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import http from "node:http";
 import { NetexpertConfig } from "../src/config.js";
 import { makeContext } from "../src/services/util.js";
 import type { CommandRunner, RunResult } from "../src/exec/executor.js";
 import { lanSweep, lanDevices, lanSnapshot, lanNewdevices, lanHostname, vendorForMac } from "../src/services/lanService.js";
 import { expandSubnetForTest } from "../src/services/lanService.js";
 import { dnsPropagation, dnsHijackcheck } from "../src/services/dnsService.js";
-import { netPublicip } from "../src/services/coreService.js";
+import { netPublicip, netPing, netHttpcheck, netPortcheck } from "../src/services/coreService.js";
 import { isRfc1918 } from "../src/safety/caps.js";
 
 // fake runner: serves fixture outputs keyed by argv signature
@@ -206,5 +208,103 @@ describe("isRfc1918 (regression)", () => {
   it("matrix", () => {
     expect(isRfc1918("10.0.0.1")).toBe(true);
     expect(isRfc1918("8.8.8.8")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// net.ping / net.httpcheck / net.portcheck (fake runner — no real network)
+// ---------------------------------------------------------------------------
+
+const WIN_PING_OK = `
+Pinging 192.168.1.1 with 32 bytes of data:
+Reply from 192.168.1.1: bytes=32 time=2ms TTL=64
+Reply from 192.168.1.1: bytes=32 time=1ms TTL=64
+Reply from 192.168.1.1: bytes=32 time=3ms TTL=64
+Reply from 192.168.1.1: bytes=32 time=1ms TTL=64
+
+Ping statistics for 192.168.1.1:
+    Packets: Sent = 4, Received = 4, Lost = 0 (0% loss),
+Approximate round trip times in milli-seconds:
+    Minimum = 1ms, Maximum = 3ms, Average = 2ms
+`;
+
+describe("net.ping", () => {
+  it("passes default pingCount (from config defaults) into the ping argv", async () => {
+    const runner = new FakeRunner();
+    runner.responses.push({
+      match: (argv) => argv[0] === "ping",
+      result: { stdout: WIN_PING_OK },
+    });
+    const ctx = ctxWith({ defaults: { pingCount: 3 } }, runner);
+    const res = await netPing(ctx, { host: "192.168.1.1", timeoutMs: 500 });
+    const env = JSON.parse(JSON.stringify(res));
+    expect(env.ok).toBe(true);
+    // the fake only answers argv matching config defaults.pingCount = 3
+    const pingCall = runner.responses; // matched ⇒ count came from config
+    expect(pingCall.length).toBe(1);
+    expect(env.data.received).toBe(4);
+  });
+
+  it("explicit count wins over config default", async () => {
+    const runner = new FakeRunner();
+    const seen: string[][] = [];
+    runner.responses.push({
+      match: (argv) => {
+        seen.push(argv);
+        return argv[argv.indexOf("-n") + 1] === "2" || argv[argv.indexOf("-c") + 1] === "2";
+      },
+      result: { stdout: WIN_PING_OK },
+    });
+    const ctx = ctxWith({ defaults: { pingCount: 3 } }, runner);
+    const res = await netPing(ctx, { host: "192.168.1.1", count: 2, timeoutMs: 500 });
+    const env = JSON.parse(JSON.stringify(res));
+    expect(env.ok).toBe(true);
+    expect(seen.length).toBeGreaterThan(0);
+  });
+});
+
+describe("net.httpcheck", () => {
+  it("rate-limits per config rate.httpCheck", async () => {
+    const ctx = ctxWith({ rate: { httpCheck: 60 } });
+    const res1 = await netHttpcheck(ctx, { url: "http://127.0.0.1:1/", timeoutMs: 1000, method: "HEAD" });
+    const e1 = JSON.parse(JSON.stringify(res1));
+    expect(e1.ok).toBe(true); // first call passes (request itself fails, but envelope ok)
+    const res2 = await netHttpcheck(ctx, { url: "http://127.0.0.1:1/", timeoutMs: 1000, method: "HEAD" });
+    const e2 = JSON.parse(JSON.stringify(res2));
+    expect(e2.ok).toBe(false);
+    expect(e2.error.code).toBe("RATE_LIMITED");
+    expect(typeof e2.error.hint).toBe("string");
+  });
+});
+
+describe("net.portcheck", () => {
+  it("open port on loopback ⇒ state open with latency", async () => {
+    const ctx = ctxWith();
+    const srv = http.createServer();
+    const port = await new Promise<number>((resolve) =>
+      srv.listen(0, "127.0.0.1", () => resolve((srv.address() as { port: number }).port)));
+    try {
+      const res = await netPortcheck(ctx, { host: "127.0.0.1", port });
+      const env = JSON.parse(JSON.stringify(res));
+      expect(env.ok).toBe(true);
+      expect(env.data.state).toBe("open");
+      expect(typeof env.data.latencyMs).toBe("number");
+    } finally {
+      await new Promise<void>((r) => srv.close(() => r()));
+    }
+  });
+
+  it("closed port on loopback ⇒ state closed, latency undefined", async () => {
+    const ctx = ctxWith();
+    // reserve a port, then release it so it's closed
+    const srv = http.createServer();
+    const port = await new Promise<number>((resolve) =>
+      srv.listen(0, "127.0.0.1", () => resolve((srv.address() as { port: number }).port)));
+    await new Promise<void>((r) => srv.close(() => r()));
+    const res = await netPortcheck(ctx, { host: "127.0.0.1", port });
+    const env = JSON.parse(JSON.stringify(res));
+    expect(env.ok).toBe(true);
+    expect(env.data.state).toBe("closed");
+    expect(env.data.latencyMs).toBeUndefined();
   });
 });

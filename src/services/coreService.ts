@@ -8,7 +8,7 @@ import { commandMapFor, backendTag } from "../exec/platform.js";
 import { parsePing, parseTraceroute } from "../parse/parsers.js";
 import { detectNmap, nmapBinary } from "./nmapService.js";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.1.4";
 
 export async function netHealth(ctx: ServiceContext): Promise<Envelope<object>> {
   const map = commandMapFor(process.platform);
@@ -40,14 +40,16 @@ export async function netHealth(ctx: ServiceContext): Promise<Envelope<object>> 
 
 const hostSchema = z.string().min(1).max(253).regex(/^[a-zA-Z0-9._-]+$/, "hostname has invalid characters");
 
-const PingInput = z.object({ host: hostSchema, count: z.number().int().min(1).max(20).default(4), timeoutMs: z.number().int().min(100).max(10000).default(2000) });
+const PingInput = z.object({ host: hostSchema, count: z.number().int().min(1).max(20).optional(), timeoutMs: z.number().int().min(100).max(10000).default(2000) });
 
 export async function netPing(ctx: ServiceContext, input: z.infer<typeof PingInput>): Promise<Envelope<object>> {
   const start = Date.now();
   const map = commandMapFor(process.platform);
+  // input wins; otherwise the config default (defaults.pingCount, itself defaulting to 4)
+  const count = input.count ?? ctx.config.defaults.pingCount;
   try {
-    const spec = map.ping({ count: input.count, timeoutMs: input.timeoutMs, host: input.host });
-    const res = await ctx.runner.run(spec.argv[0] ?? "ping", spec.argv.slice(1), { timeoutMs: input.timeoutMs * input.count + 5000 });
+    const spec = map.ping({ count, timeoutMs: input.timeoutMs, host: input.host });
+    const res = await ctx.runner.run(spec.argv[0] ?? "ping", spec.argv.slice(1), { timeoutMs: input.timeoutMs * count + 5000 });
     const parsed = parsePing(res.stdout + "\n" + res.stderr);
     if (!parsed.stats) {
       throw new ToolError("EXEC_FAILED", `ping ${input.host} produced no parseable output`);
@@ -55,7 +57,7 @@ export async function netPing(ctx: ServiceContext, input: z.infer<typeof PingInp
     return okEnvelope(ctx, "net.ping", parsed.stats, { backend: backendTag(spec), durationMs: Date.now() - start, warnings: parsed.warnings });
   } catch (e) {
     // Fall back to TCP connect (honest backend label)
-    const tcpStats = await tcpPing(input.host, input.count);
+    const tcpStats = await tcpPing(input.host, count);
     if (tcpStats) {
       return okEnvelope(ctx, "net.ping", tcpStats, { backend: "tcp-connect", durationMs: Date.now() - start, warnings: [`icmp ping failed (${e instanceof Error ? e.message : "unknown"}); used TCP connect fallback`] });
     }
@@ -89,13 +91,15 @@ export function tcpConnectMs(host: string, port: number, timeoutMs = 2000): Prom
   });
 }
 
-const TraceInput = z.object({ host: hostSchema, maxHops: z.number().int().min(1).max(30).default(20), timeoutMs: z.number().int().min(100).max(5000).default(1000) });
+const TraceInput = z.object({ host: hostSchema, maxHops: z.number().int().min(1).max(30).optional(), timeoutMs: z.number().int().min(100).max(5000).default(1000) });
 
 export async function netTrace(ctx: ServiceContext, input: z.infer<typeof TraceInput>): Promise<Envelope<object>> {
   const start = Date.now();
   const map = commandMapFor(process.platform);
+  // input wins; otherwise the config default (defaults.traceMaxHops, itself defaulting to 20)
+  const maxHops = input.maxHops ?? ctx.config.defaults.traceMaxHops;
   try {
-    const spec = map.trace({ maxHops: input.maxHops, timeoutMs: input.timeoutMs, host: input.host });
+    const spec = map.trace({ maxHops, timeoutMs: input.timeoutMs, host: input.host });
     const res = await ctx.runner.run(spec.argv[0] ?? "traceroute", spec.argv.slice(1), { timeoutMs: 30000 });
     const parsed = parseTraceroute(res.stdout);
     return okEnvelope(ctx, "net.trace", { hops: parsed.hops }, { backend: backendTag(spec), durationMs: Date.now() - start, warnings: parsed.warnings });
@@ -108,6 +112,10 @@ const HttpCheckInput = z.object({ url: z.string().url(), method: z.enum(["GET", 
 
 export async function netHttpcheck(ctx: ServiceContext, input: z.infer<typeof HttpCheckInput>): Promise<Envelope<object>> {
   const start = Date.now();
+  const retry = ctx.caps.rate.check("httpCheck");
+  if (retry !== undefined) {
+    return failEnvelope(ctx, "net.httpcheck", { code: "RATE_LIMITED", message: "httpCheck rate limit hit", hint: `retry in ${retry}ms` });
+  }
   const timings = { dnsMs: 0, connectMs: 0, ttfbMs: 0, totalMs: 0 };
   let status = 0;
   let headers: Record<string, string> = {};
@@ -193,7 +201,18 @@ export async function netSsl(ctx: ServiceContext, input: z.infer<typeof SslInput
       { host: input.host, port: input.port, servername: input.host, timeout: input.timeoutMs, rejectUnauthorized: false },
       () => {
         const cert = sock.getPeerCertificate(true);
-        const chainCount = sock.getPeerCertificate !== undefined ? 1 : 0;
+        // Walk the chain via getPeerCertificate(true) + .issuer links as long
+        // as the encoded bytes differ (same encoded object = terminal, guards
+        // against self-signed loops).
+        let peer = cert && typeof cert === "object" ? cert : null;
+        let chainCount = 0;
+        const seen = new Set<unknown>();
+        while (peer && typeof peer === "object" && !seen.has(peer) && chainCount < 12) {
+          seen.add(peer);
+          chainCount++;
+          const issuer = (peer as { issuer?: unknown }).issuer;
+          peer = issuer && typeof issuer === "object" && (issuer as { encoded?: unknown }).encoded ? (issuer as never) : null;
+        }
         const info = cert && typeof cert === "object" && "subject" in cert
           ? {
               subject: (cert as { subject?: unknown }).subject ?? null,
