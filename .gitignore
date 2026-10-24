@@ -17,3 +17,4 @@ Thumbs.db
 # temp commit messages (gitignored by convention)
 .git-commit-msg.tmp
 # test snapshots dir content is temp-dir based; nothing to ignore
+*.tgz

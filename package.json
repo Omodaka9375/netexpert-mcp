@@ -1,6 +1,6 @@
 {
   "name": "netexpert-mcp",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "mcpName": "io.github.Omodaka9375/netexpert-mcp",
   "description": "Cross-platform local-network diagnostics & security-posture MCP server — the local host + LAN half; complements ugnas-mcp (the NAS half). 31 tools, bounded probes, no shells, no raw sockets.",
   "type": "module",

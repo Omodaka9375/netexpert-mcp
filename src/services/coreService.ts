@@ -8,7 +8,7 @@ import { commandMapFor, backendTag } from "../exec/platform.js";
 import { parsePing, parseTraceroute } from "../parse/parsers.js";
 import { detectNmap, nmapBinary } from "./nmapService.js";
 
-export const VERSION = "0.1.4";
+export const VERSION = "0.1.5";
 
 export async function netHealth(ctx: ServiceContext): Promise<Envelope<object>> {
   const map = commandMapFor(process.platform);
